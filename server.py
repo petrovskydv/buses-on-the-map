@@ -14,7 +14,7 @@ async def talk_to_browser(request):
 
     while True:
         buses_coords = [
-            {"busId": bus_id, "lat": bus['lat'], "lng": bus['lng'], "route": bus_id}
+            {"busId": bus_id, "lat": bus['lat'], "lng": bus['lng'], "route": bus['route']}
             for bus_id, bus in buses.items()
         ]
 
