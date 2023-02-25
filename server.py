@@ -5,29 +5,26 @@ from collections import defaultdict
 import trio
 from trio_websocket import serve_websocket, ConnectionClosed
 
+PAUSE = 0.1
 buses = defaultdict()
 
 
 async def talk_to_browser(request):
     ws = await request.accept()
-    buses_msg = {
-        "msgType": "Buses",
-        "buses": [
-            {"busId": "c790сс", "lat": 55.7500, "lng": 37.600, "route": "156"},
-        ]
-    }
 
     while True:
-        try:
-            buses_msgs = []
-            for bus_id, bus in buses.items():
-                buses_msgs.append(
-                    {"busId": bus_id, "lat": bus['lat'], "lng": bus['lng'], "route": bus_id},
-                )
+        buses_coords = [
+            {"busId": bus_id, "lat": bus['lat'], "lng": bus['lng'], "route": bus_id}
+            for bus_id, bus in buses.items()
+        ]
 
-            buses_msg['buses'] = buses_msgs
+        buses_msg = {
+            "msgType": "Buses",
+            "buses": buses_coords
+        }
+        try:
             await ws.send_message(json.dumps(buses_msg))
-            await trio.sleep(2)
+            await trio.sleep(PAUSE)
         except ConnectionClosed:
             break
 
