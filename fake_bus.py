@@ -1,33 +1,44 @@
+import argparse
 import itertools
 import json
 import logging
 import random
+from sys import stderr
 
 import trio
-from sys import stderr
 from trio_websocket import open_websocket_url
 
 from load_routes import load_routes
-
-PAUSE = 0.1
-CHANNELS_COUNT = 10
-ROUTE_BUSSES_COUNT = 3
 
 loger = logging.getLogger(__name__)
 
 
 async def main():
-    url = 'ws://127.0.0.1:8080'
-    send_channels, receive_channels = create_channels_pool(CHANNELS_COUNT)
+    parser = argparse.ArgumentParser(description='Create fake coordinates for buses')
+    parser.add_argument('--server', default='ws://127.0.0.1:8080', help='server url')
+    parser.add_argument('--routes_number', type=int, default=595, help='number of routes')
+    parser.add_argument('--buses_per_route', type=int, default=1, help='number of buses per route')
+    parser.add_argument('--websockets_number', type=int, default=1, help='number of websockets')
+    parser.add_argument('--emulator_id', default='1', help='prefix for busId for many instances of script')
+    parser.add_argument('--refresh_timeout', type=float, default=0.1, help='delay for updating server coordinates')
+    parser.add_argument('-v', '--verbose', choices=['CRITICAL', 'ERROR', 'WARNING', 'INFO', 'DEBUG'], default='INFO',
+                        help='logging level')
+    args = parser.parse_args()
+
+    send_channels, receive_channels = create_channels_pool(args.websockets_number)
 
     async with trio.open_nursery() as nursery:
         for receive_channel in receive_channels:
-            nursery.start_soon(send_updates, url, receive_channel)
+            nursery.start_soon(send_updates, args.server, receive_channel, args.refresh_timeout)
 
+        count = 0
         for route in load_routes():
-            for index in range(1, ROUTE_BUSSES_COUNT):
+            count += 1
+            if count > args.routes_number:
+                break
+            for index in range(args.buses_per_route):
                 send_channel = random.choice(send_channels)
-                bus_id = generate_bus_id(route['name'], index)
+                bus_id = generate_bus_id(args.emulator_id, route['name'], index)
                 nursery.start_soon(run_bus, bus_id, route, send_channel)
 
 
@@ -42,8 +53,8 @@ def create_channels_pool(channels_count):
     return send_channels, receive_channels
 
 
-def generate_bus_id(route_id, bus_index):
-    return f"{route_id}-{bus_index}"
+def generate_bus_id(emulator_id, route_id, bus_index):
+    return f"{emulator_id}-{route_id}-{bus_index}"
 
 
 async def run_bus(bus_id, route, send_channel):
@@ -59,12 +70,10 @@ async def run_bus(bus_id, route, send_channel):
                 "route": route['name']
             }
             await send_channel.send(bus_msg)
-            loger.info(f'send msg: {bus_msg}')
-            await trio.sleep(PAUSE)
+            loger.info(f'send msg to channel: {bus_msg}')
 
 
-async def send_updates(server_address, receive_channel):
-    # while True:
+async def send_updates(server_address, receive_channel, refresh_timeout):
     try:
         async with open_websocket_url(server_address) as ws:
             loger.info(f'open connection on port {ws.local.port}')
@@ -74,7 +83,7 @@ async def send_updates(server_address, receive_channel):
                 encoded_msg = json.dumps(msg, ensure_ascii=False)
                 loger.info(f'send msg on port {ws.local.port}: {msg}')
                 await ws.send_message(encoded_msg)
-                await trio.sleep(PAUSE)
+                await trio.sleep(refresh_timeout)
 
             loger.info(f'no more msgs ')
         loger.info(f'close connection')
