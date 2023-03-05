@@ -1,4 +1,5 @@
 import argparse
+import contextlib
 import itertools
 import json
 import logging
@@ -18,11 +19,11 @@ async def main():
     parser = argparse.ArgumentParser(description='Create fake coordinates for buses')
     parser.add_argument('--server', default='ws://127.0.0.1:8080', help='server url')
     parser.add_argument('--routes_number', type=int, default=595, help='number of routes')
-    parser.add_argument('--buses_per_route', type=int, default=5, help='number of buses per route')
-    parser.add_argument('--websockets_number', type=int, default=1, help='number of websockets')
+    parser.add_argument('--buses_per_route', type=int, default=10, help='number of buses per route')
+    parser.add_argument('--websockets_number', type=int, default=10, help='number of websockets')
     parser.add_argument('--emulator_id', default='1', help='prefix for busId for many instances of script')
     parser.add_argument('--refresh_timeout', type=float, default=0.1, help='delay for updating server coordinates')
-    parser.add_argument('--buffer_size', type=int, default=1000, help='buffer size for messages to server')
+    parser.add_argument('--buffer_size', type=int, default=100, help='buffer size for messages to server')
     parser.add_argument('-v', '--verbose', choices=['CRITICAL', 'ERROR', 'WARNING', 'INFO', 'DEBUG'], default='INFO',
                         help='logging level')
     args = parser.parse_args()
@@ -98,4 +99,8 @@ async def send_updates(server_address, receive_channel, refresh_timeout, buffer_
 
 if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO, format='%(levelname)s:%(name)s:%(message)s')
-    trio.run(main)
+    trio_loger = logging.getLogger('trio-websocket')
+    trio_loger.setLevel(level=logging.INFO)
+
+    with contextlib.suppress(KeyboardInterrupt):
+        trio.run(main)
