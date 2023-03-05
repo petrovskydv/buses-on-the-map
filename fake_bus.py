@@ -6,9 +6,10 @@ import random
 from sys import stderr
 
 import trio
-from trio_websocket import open_websocket_url
+from trio_websocket import open_websocket_url, ConnectionClosed, HandshakeError
 
 from load_routes import load_routes
+from reconnect import relaunch_on_disconnect
 
 loger = logging.getLogger(__name__)
 
@@ -18,10 +19,10 @@ async def main():
     parser.add_argument('--server', default='ws://127.0.0.1:8080', help='server url')
     parser.add_argument('--routes_number', type=int, default=595, help='number of routes')
     parser.add_argument('--buses_per_route', type=int, default=5, help='number of buses per route')
-    parser.add_argument('--websockets_number', type=int, default=10, help='number of websockets')
+    parser.add_argument('--websockets_number', type=int, default=1, help='number of websockets')
     parser.add_argument('--emulator_id', default='1', help='prefix for busId for many instances of script')
     parser.add_argument('--refresh_timeout', type=float, default=0.1, help='delay for updating server coordinates')
-    parser.add_argument('--buffer_size', type=int, default=1000, help='delay for updating server coordinates')
+    parser.add_argument('--buffer_size', type=int, default=1000, help='buffer size for messages to server')
     parser.add_argument('-v', '--verbose', choices=['CRITICAL', 'ERROR', 'WARNING', 'INFO', 'DEBUG'], default='INFO',
                         help='logging level')
     args = parser.parse_args()
@@ -75,6 +76,7 @@ async def run_bus(bus_id, route, send_channel, refresh_timeout):
             await trio.sleep(refresh_timeout)
 
 
+@relaunch_on_disconnect((ConnectionClosed, HandshakeError,), loger)
 async def send_updates(server_address, receive_channel, refresh_timeout, buffer_size):
     try:
         async with open_websocket_url(server_address) as ws:
@@ -90,10 +92,6 @@ async def send_updates(server_address, receive_channel, refresh_timeout, buffer_
                     await ws.send_message(encoded_msgs)
                     msgs.clear()
                     await trio.sleep(refresh_timeout)
-
-            loger.info(f'no more msgs ')
-        loger.info(f'close connection')
-
     except OSError as ose:
         print('Connection attempt failed: %s' % ose, file=stderr)
 
