@@ -1,8 +1,8 @@
-import contextlib
 import functools
 import json
 import logging
 from collections import defaultdict
+from dataclasses import dataclass
 
 import trio
 from trio_websocket import serve_websocket, ConnectionClosed
@@ -13,15 +13,34 @@ PAUSE = 0.1
 buses = defaultdict()
 
 
+@dataclass
+class WindowBounds:
+    south_lat: float = 0
+    north_lat: float = 0
+    west_lng: float = 0
+    east_lng: float = 0
+
+
 async def talk_to_browser(request):
     ws = await request.accept()
+    loger.info(f'open remote connection on port {ws.remote.port}')
 
+    bounds = WindowBounds()
+
+    async with trio.open_nursery() as nursery:
+        nursery.start_soon(listen_browser, ws, bounds)
+        nursery.start_soon(send_buses, ws, bounds)
+
+    loger.info(f'close remote connection')
+
+
+async def send_buses(ws, bounds):
     while True:
-        await listen_browser(ws)
 
         buses_coords = [
             {"busId": bus_id, "lat": bus['lat'], "lng": bus['lng'], "route": bus['route']}
             for bus_id, bus in buses.items()
+            if is_inside(bounds, bus['lat'], bus['lng'])
         ]
 
         buses_msg = {
@@ -47,23 +66,30 @@ async def handle_bus_msg(request):
             break
 
 
-async def listen_browser(ws):
-    with contextlib.suppress(ConnectionClosed):
-        message = await ws.get_message()
-        loger.debug(message)
-        bounds = json.loads(message)['data']
-        return bounds
+async def listen_browser(ws, bounds: WindowBounds):
+    while True:
+        try:
+            message = await ws.get_message()
+            loger.debug(message)
+            new_bounds = json.loads(message)['data']
+            bounds.east_lng = new_bounds['east_lng']
+            bounds.west_lng = new_bounds['west_lng']
+            bounds.north_lat = new_bounds['north_lat']
+            bounds.south_lat = new_bounds['south_lat']
+            loger.debug(bounds)
+        except ConnectionClosed:
+            break
 
 
 def is_inside(bounds, lat, lng):
-    is_lat_in_bounds = bounds['north_lat'] > lat > bounds['south_lat']
-    is_lng_in_bounds = bounds['east_lng'] > lng > bounds['west_lng']
+    is_lat_in_bounds = bounds.north_lat > lat > bounds.south_lat
+    is_lng_in_bounds = bounds.east_lng > lng > bounds.west_lng
     return all((is_lat_in_bounds, is_lng_in_bounds))
 
 
 async def main():
-    partial_talk_to_browser = functools.partial(serve_websocket, talk_to_browser, '127.0.0.1', 8000, ssl_context=None)
-    partial_handle_bus_msg = functools.partial(serve_websocket, handle_bus_msg, '127.0.0.1', 8080, ssl_context=None)
+    partial_talk_to_browser = functools.partial(serve_websocket, talk_to_browser, '0.0.0.0', 8000, ssl_context=None)
+    partial_handle_bus_msg = functools.partial(serve_websocket, handle_bus_msg, '0.0.0.0', 8080, ssl_context=None)
 
     async with trio.open_nursery() as nursery:
         nursery.start_soon(partial_talk_to_browser)
