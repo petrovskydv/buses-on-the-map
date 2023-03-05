@@ -1,9 +1,13 @@
+import contextlib
 import functools
 import json
+import logging
 from collections import defaultdict
 
 import trio
 from trio_websocket import serve_websocket, ConnectionClosed
+
+loger = logging.getLogger('server')
 
 PAUSE = 0.1
 buses = defaultdict()
@@ -13,6 +17,8 @@ async def talk_to_browser(request):
     ws = await request.accept()
 
     while True:
+        await listen_browser(ws)
+
         buses_coords = [
             {"busId": bus_id, "lat": bus['lat'], "lng": bus['lng'], "route": bus['route']}
             for bus_id, bus in buses.items()
@@ -41,6 +47,12 @@ async def handle_bus_msg(request):
             break
 
 
+async def listen_browser(ws):
+    with contextlib.suppress(ConnectionClosed):
+        message = await ws.get_message()
+        loger.debug(message)
+
+
 async def main():
     partial_talk_to_browser = functools.partial(serve_websocket, talk_to_browser, '127.0.0.1', 8000, ssl_context=None)
     partial_handle_bus_msg = functools.partial(serve_websocket, handle_bus_msg, '127.0.0.1', 8080, ssl_context=None)
@@ -50,4 +62,9 @@ async def main():
         nursery.start_soon(partial_handle_bus_msg)
 
 
-trio.run(main)
+if __name__ == '__main__':
+    logging.basicConfig(level=logging.DEBUG, format='%(levelname)s:%(name)s:%(message)s')
+    trio_loger = logging.getLogger('trio-websocket')
+    trio_loger.setLevel(level=logging.INFO)
+
+    trio.run(main)
