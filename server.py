@@ -51,6 +51,14 @@ async def listen_browser(ws):
     with contextlib.suppress(ConnectionClosed):
         message = await ws.get_message()
         loger.debug(message)
+        bounds = json.loads(message)['data']
+        return bounds
+
+
+def is_inside(bounds, lat, lng):
+    is_lat_in_bounds = bounds['north_lat'] > lat > bounds['south_lat']
+    is_lng_in_bounds = bounds['east_lng'] > lng > bounds['west_lng']
+    return all((is_lat_in_bounds, is_lng_in_bounds))
 
 
 async def main():
