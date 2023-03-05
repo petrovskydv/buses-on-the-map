@@ -34,8 +34,9 @@ async def handle_bus_msg(request):
     while True:
         try:
             message = await ws.get_message()
-            bus_msg = json.loads(message)
-            buses[bus_msg['busId']] = bus_msg
+            bus_msgs = json.loads(message)
+            for bus_msg in bus_msgs:
+                buses[bus_msg['busId']] = bus_msg
         except ConnectionClosed:
             break
 
