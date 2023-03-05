@@ -1,24 +1,19 @@
+import contextlib
 import functools
 import json
 import logging
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import asdict
 
 import trio
 from trio_websocket import serve_websocket, ConnectionClosed
+
+from models import WindowBounds, Bus
 
 loger = logging.getLogger('server')
 
 PAUSE = 0.1
 buses = defaultdict()
-
-
-@dataclass
-class WindowBounds:
-    south_lat: float = 0
-    north_lat: float = 0
-    west_lng: float = 0
-    east_lng: float = 0
 
 
 async def talk_to_browser(request):
@@ -38,9 +33,7 @@ async def send_buses(ws, bounds):
     while True:
 
         buses_coords = [
-            {"busId": bus_id, "lat": bus['lat'], "lng": bus['lng'], "route": bus['route']}
-            for bus_id, bus in buses.items()
-            if is_inside(bounds, bus['lat'], bus['lng'])
+            asdict(bus) for bus_id, bus in buses.items() if bounds.is_inside(bus.lat, bus.lng)
         ]
 
         buses_msg = {
@@ -61,7 +54,8 @@ async def handle_bus_msg(request):
             message = await ws.get_message()
             bus_msgs = json.loads(message)
             for bus_msg in bus_msgs:
-                buses[bus_msg['busId']] = bus_msg
+                bus = Bus(**bus_msg)
+                buses[bus.busId] = bus
         except ConnectionClosed:
             break
 
@@ -70,21 +64,12 @@ async def listen_browser(ws, bounds: WindowBounds):
     while True:
         try:
             message = await ws.get_message()
-            loger.debug(message)
+            loger.debug(f'receive new bounds {message}')
             new_bounds = json.loads(message)['data']
-            bounds.east_lng = new_bounds['east_lng']
-            bounds.west_lng = new_bounds['west_lng']
-            bounds.north_lat = new_bounds['north_lat']
-            bounds.south_lat = new_bounds['south_lat']
-            loger.debug(bounds)
+            bounds.update(new_bounds)
+            loger.debug(f'set new bounds {bounds}')
         except ConnectionClosed:
             break
-
-
-def is_inside(bounds, lat, lng):
-    is_lat_in_bounds = bounds.north_lat > lat > bounds.south_lat
-    is_lng_in_bounds = bounds.east_lng > lng > bounds.west_lng
-    return all((is_lat_in_bounds, is_lng_in_bounds))
 
 
 async def main():
@@ -101,4 +86,5 @@ if __name__ == '__main__':
     trio_loger = logging.getLogger('trio-websocket')
     trio_loger.setLevel(level=logging.INFO)
 
-    trio.run(main)
+    with contextlib.suppress(KeyboardInterrupt):
+        trio.run(main)
