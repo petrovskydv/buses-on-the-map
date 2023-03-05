@@ -1,3 +1,4 @@
+import argparse
 import contextlib
 import functools
 import json
@@ -66,6 +67,7 @@ async def listen_browser(ws, bounds: WindowBounds):
             message = await ws.get_message()
             loger.debug(f'receive new bounds {message}')
             new_bounds = json.loads(message)['data']
+            # получаем координаты окна от браузера для фильтрации автобусов
             bounds.update(new_bounds)
             loger.debug(f'set new bounds {bounds}')
         except ConnectionClosed:
@@ -73,8 +75,19 @@ async def listen_browser(ws, bounds: WindowBounds):
 
 
 async def main():
-    partial_talk_to_browser = functools.partial(serve_websocket, talk_to_browser, '0.0.0.0', 8000, ssl_context=None)
-    partial_handle_bus_msg = functools.partial(serve_websocket, handle_bus_msg, '0.0.0.0', 8080, ssl_context=None)
+    parser = argparse.ArgumentParser(description='Backend for busses map')
+    parser.add_argument('--bus_port', type=int, default=8080, help='port for data about bus')
+    parser.add_argument('--browser_port', type=int, default=8000, help='port for frontend')
+    parser.add_argument('-v', '--verbose', choices=['CRITICAL', 'ERROR', 'WARNING', 'INFO', 'DEBUG'], default='INFO',
+                        help='logging level')
+    args = parser.parse_args()
+
+    loger.setLevel(args.verbose)
+
+    partial_talk_to_browser = functools.partial(serve_websocket, talk_to_browser, '0.0.0.0', args.browser_port,
+                                                ssl_context=None)
+    partial_handle_bus_msg = functools.partial(serve_websocket, handle_bus_msg, '0.0.0.0', args.bus_port,
+                                               ssl_context=None)
 
     async with trio.open_nursery() as nursery:
         nursery.start_soon(partial_talk_to_browser)
