@@ -57,11 +57,19 @@ async def handle_bus_msg(request):
         try:
             message = await ws.get_message()
             bus_msgs = json.loads(message)
+            if not isinstance(bus_msgs, list):
+                bus = Bus(**bus_msgs)
+                buses[bus.busId] = bus
+                await ws.send_message('OK')
+                continue
             for bus_msg in bus_msgs:
                 bus = Bus(**bus_msg)
                 buses[bus.busId] = bus
         except ConnectionClosed:
             break
+        except ValidationError as e:
+            error_msg = await create_error_msg(e)
+            await ws.send_message(json.dumps(error_msg))
 
 
 async def listen_browser(ws, bounds: WindowBounds):

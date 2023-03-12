@@ -1,4 +1,3 @@
-from dataclasses import dataclass
 from typing import Literal
 
 from pydantic import BaseModel
@@ -21,8 +20,7 @@ class WindowBounds(BaseModel):
         return all((is_lat_in_bounds, is_lng_in_bounds))
 
 
-@dataclass
-class Bus:
+class Bus(BaseModel):
     busId: str
     lat: float
     lng: float
