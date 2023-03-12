@@ -7,9 +7,10 @@ from collections import defaultdict
 from dataclasses import asdict
 
 import trio
+from pydantic import ValidationError
 from trio_websocket import serve_websocket, ConnectionClosed
 
-from models import WindowBounds, Bus
+from models import WindowBounds, Bus, BrowserMsg
 
 loger = logging.getLogger('server')
 
@@ -21,7 +22,7 @@ async def talk_to_browser(request):
     ws = await request.accept()
     loger.info(f'open remote connection on port {ws.remote.port}')
 
-    bounds = WindowBounds()
+    bounds = WindowBounds(south_lat=0, north_lat=0, west_lng=0, east_lng=0)
 
     async with trio.open_nursery() as nursery:
         nursery.start_soon(listen_browser, ws, bounds)
@@ -36,7 +37,9 @@ async def send_buses(ws, bounds):
         buses_coords = [
             asdict(bus) for bus_id, bus in buses.items() if bounds.is_inside(bus.lat, bus.lng)
         ]
-
+        if not buses_coords:
+            await trio.sleep(PAUSE)
+            continue
         buses_msg = {
             "msgType": "Buses",
             "buses": buses_coords
@@ -66,19 +69,33 @@ async def listen_browser(ws, bounds: WindowBounds):
         try:
             message = await ws.get_message()
             loger.debug(f'receive new bounds {message}')
-            new_bounds = json.loads(message)['data']
+            browser_msg = BrowserMsg.parse_raw(message)
+
             # получаем координаты окна от браузера для фильтрации автобусов
-            bounds.update(new_bounds)
+            bounds.update(browser_msg.data.dict())
             loger.debug(f'set new bounds {bounds}')
+
+            await ws.send_message('OK')
         except ConnectionClosed:
             break
+        except ValidationError as e:
+            error_msg = await create_error_msg(e)
+            await ws.send_message(json.dumps(error_msg))
+
+
+async def create_error_msg(e):
+    error_msg = {'errors': [], 'msgType': 'Errors'}
+    for item in e.errors():
+        loc = '->'.join(item['loc'])
+        error_msg['errors'].append(f'{loc}: {item["msg"]}')
+    return error_msg
 
 
 async def main():
     parser = argparse.ArgumentParser(description='Backend for busses map')
     parser.add_argument('--bus_port', type=int, default=8080, help='port for data about bus')
     parser.add_argument('--browser_port', type=int, default=8000, help='port for frontend')
-    parser.add_argument('-v', '--verbose', choices=['CRITICAL', 'ERROR', 'WARNING', 'INFO', 'DEBUG'], default='INFO',
+    parser.add_argument('-v', '--verbose', choices=['CRITICAL', 'ERROR', 'WARNING', 'INFO', 'DEBUG'], default='DEBUG',
                         help='logging level')
     args = parser.parse_args()
 

@@ -1,12 +1,14 @@
 from dataclasses import dataclass
+from typing import Literal
+
+from pydantic import BaseModel
 
 
-@dataclass
-class WindowBounds:
-    south_lat: float = 0.0
-    north_lat: float = 0.0
-    west_lng: float = 0.0
-    east_lng: float = 0.0
+class WindowBounds(BaseModel):
+    south_lat: float
+    north_lat: float
+    west_lng: float
+    east_lng: float
 
     def update(self, new):
         for key, value in new.items():
@@ -25,3 +27,8 @@ class Bus:
     lat: float
     lng: float
     route: str
+
+
+class BrowserMsg(BaseModel):
+    msgType: Literal['newBounds']
+    data: WindowBounds
