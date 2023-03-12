@@ -10,7 +10,7 @@ import trio
 from pydantic import ValidationError
 from trio_websocket import serve_websocket, ConnectionClosed
 
-from models import WindowBounds, Bus, BrowserMsg
+from tools.models import WindowBounds, Bus, BrowserMsg
 
 loger = logging.getLogger('server')
 

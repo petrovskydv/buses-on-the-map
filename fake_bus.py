@@ -9,8 +9,8 @@ from sys import stderr
 import trio
 from trio_websocket import open_websocket_url, ConnectionClosed, HandshakeError
 
-from load_routes import load_routes
-from reconnect import relaunch_on_disconnect
+from tools.load_routes import load_routes
+from tools.reconnect import relaunch_on_disconnect
 
 loger = logging.getLogger(__name__)
 
