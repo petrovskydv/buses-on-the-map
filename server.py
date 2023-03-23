@@ -1,10 +1,8 @@
 import argparse
 import contextlib
-import functools
 import json
 import logging
 from collections import defaultdict
-from dataclasses import asdict
 
 import trio
 from pydantic import ValidationError
@@ -33,10 +31,10 @@ async def talk_to_browser(request):
 
 async def send_buses(ws, bounds):
     while True:
-
         buses_coords = [
-            asdict(bus) for bus_id, bus in buses.items() if bounds.is_inside(bus.lat, bus.lng)
+            bus.dict() for bus_id, bus in buses.items() if bounds.is_inside(bus.lat, bus.lng)
         ]
+
         if not buses_coords:
             await trio.sleep(PAUSE)
             continue
@@ -109,14 +107,9 @@ async def main():
 
     loger.setLevel(args.verbose)
 
-    partial_talk_to_browser = functools.partial(serve_websocket, talk_to_browser, '0.0.0.0', args.browser_port,
-                                                ssl_context=None)
-    partial_handle_bus_msg = functools.partial(serve_websocket, handle_bus_msg, '0.0.0.0', args.bus_port,
-                                               ssl_context=None)
-
     async with trio.open_nursery() as nursery:
-        nursery.start_soon(partial_talk_to_browser)
-        nursery.start_soon(partial_handle_bus_msg)
+        nursery.start_soon(serve_websocket, talk_to_browser, '0.0.0.0', args.browser_port, None)
+        nursery.start_soon(serve_websocket, handle_bus_msg, '0.0.0.0', args.bus_port, None)
 
 
 if __name__ == '__main__':
